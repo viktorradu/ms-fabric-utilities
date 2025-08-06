@@ -1,6 +1,7 @@
 import requests, base64, json, datetime
 from azure.identity import DefaultAzureCredential
 import labconfig
+from lib.encryption import encrypt_with_public_key
 
 auth = DefaultAzureCredential(
     exclude_interactive_browser_credential=False,
@@ -22,6 +23,7 @@ headers = {
 queryMetadata = {
   "formatVersion": "202502",
   "computeEngineSettings": {},
+  "gatewayObjectId": labconfig.gatewayId,
   "name": "HardcodedQuery",
   "queryGroups": [],
   "documentLocale": "en-US",
@@ -33,7 +35,10 @@ queryMetadata = {
   },
   "connections": [
     {
-        "connectionId": "{\"ClusterId\":\"" + labconfig.databricksConnectionGateway + "\",\"DatasourceId\":\"" + labconfig.databricksConnectionId + "\"}"
+      "allowUsageThroughGateway": True,
+      "kind":"DatabricksMultiCloud",
+      "path":"{\"host\":\"" + labconfig.databricksHost + "\",\"httpPath\":\"" + labconfig.databricksHttpPath + "\"}",
+      "connectionId":"{\"ClusterId\":\"" + labconfig.gatewayId + "\",\"DatasourceId\":\"" + labconfig.databricksConnectionId + "\"}"
     }
   ]
 }
@@ -86,4 +91,12 @@ dataflowDefinition = {
 
 created = requests.post(f"https://api.fabric.microsoft.com/v1/workspaces/{labconfig.workspaceId}/dataflows", headers=headers, json=dataflowDefinition)
 
-print(created.status_code, created.json())
+if created.status_code != 201:
+    print(f"Error creating dataflow: {created.status_code} - {created.text}")
+    exit(1)
+
+published = requests.post(f"https://api.fabric.microsoft.com/v1/workspaces/{labconfig.workspaceId}/dataflows/{created.json().get('id')}/jobs/instances?jobType=ApplyChanges", headers=headers)
+
+if published.status_code != 202:
+    print(f"Error publishing dataflow: {published.status_code} - {published.text}")
+    exit(1)
