@@ -1,7 +1,7 @@
 import requests, base64, json, datetime
 from azure.identity import DefaultAzureCredential
+from lib.LRO import ensure_LRO_complete
 import labconfig
-from lib.encryption import encrypt_with_public_key
 
 auth = DefaultAzureCredential(
     exclude_interactive_browser_credential=False,
@@ -92,11 +92,10 @@ dataflowDefinition = {
 created = requests.post(f"https://api.fabric.microsoft.com/v1/workspaces/{labconfig.workspaceId}/dataflows", headers=headers, json=dataflowDefinition)
 
 if created.status_code != 201:
-    print(f"Error creating dataflow: {created.status_code} - {created.text}")
-    exit(1)
+    raise Exception(f"Dataflow creation failed with status code: {created.status_code} - {created.text}")
 
 published = requests.post(f"https://api.fabric.microsoft.com/v1/workspaces/{labconfig.workspaceId}/dataflows/{created.json().get('id')}/jobs/instances?jobType=ApplyChanges", headers=headers)
 
-if published.status_code != 202:
-    print(f"Error publishing dataflow: {published.status_code} - {published.text}")
-    exit(1)
+published_result = ensure_LRO_complete(published, headers)
+if published_result.status_code != 200:
+    raise Exception(f"Dataflow publishing failed with status code: {published_result.status_code} - {published_result.text}")
