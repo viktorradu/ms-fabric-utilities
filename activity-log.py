@@ -1,8 +1,8 @@
 import datetime, requests, csv
 from azure.identity import DefaultAzureCredential,AzureAuthorityHosts
 
-input_batch_minutes = 20
-input_log_end_date = datetime.date.today()
+input_batch_minutes = 30
+input_log_end_date = datetime.date.today() - datetime.timedelta(days=1)
 input_log_days = 1
 
 start_date = input_log_end_date - datetime.timedelta(days=input_log_days - 1)
