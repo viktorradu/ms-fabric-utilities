@@ -1,12 +1,17 @@
-import datetime, requests, csv
+import datetime, requests, csv, os
 from azure.identity import DefaultAzureCredential,AzureAuthorityHosts
 
-input_batch_minutes = 30
-input_log_end_date = datetime.date.today() - datetime.timedelta(days=1)
-input_log_days = 1
+input_result_folder = "c:/temp/activity_export"
+input_batch_minutes = 60 * 12
+input_log_start_date = datetime.date.today() - datetime.timedelta(days=5) # inclusive, e.g. datetime.date.fromisoformat("2025-01-01")
+input_log_end_date = datetime.date.today() - datetime.timedelta(days=1) # inclusive, e.g. datetime.date.fromisoformat("2025-01-07")
 
-start_date = input_log_end_date - datetime.timedelta(days=input_log_days - 1)
+if input_log_start_date > input_log_end_date:
+    raise ValueError("Invalid date range: Start date after end date")
+
+start_date = input_log_start_date
 end_date = input_log_end_date
+log_days = (end_date - start_date).days + 1
 
 cred = DefaultAzureCredential(
                 authority = AzureAuthorityHosts.AZURE_PUBLIC_CLOUD,
@@ -27,6 +32,8 @@ headers = {
             }
 
 result = []
+
+print(f"Exporting activities from {start_date} to {end_date}. Step: {input_batch_minutes} minutes")
 
 next_batch = None
 while True:
@@ -62,7 +69,7 @@ while True:
     if range_to <= datetime.datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59):
         next_batch = range_to
         batch_start_days = (range_from - datetime.datetime.combine(start_date, datetime.time(0,0,0))).days
-        batch_progress = batch_start_days / input_log_days
+        batch_progress = batch_start_days / log_days
     else: 
         break
 
@@ -73,8 +80,9 @@ if len(result) > 0:
         for field in event.keys():
             if field not in fields:
                 fields.append(field)
-    with open('activity.csv', 'w', newline='', encoding="utf-8") as file:
-        writer = csv.DictWriter(file,fieldnames=fields,extrasaction='raise', quoting=csv.QUOTE_ALL, lineterminator='\n')
+    os.makedirs(input_result_folder, exist_ok=True)
+    with open(f'{input_result_folder}/activity.csv', 'w', newline='', encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fields, extrasaction='raise', quoting=csv.QUOTE_ALL, lineterminator='\n')
         writer.writeheader()
         writer.writerows(result)
 else:
