@@ -30,7 +30,10 @@ with open(file, 'w', newline='', encoding="utf-8") as file:
                 users = app_users.json().get("value", [])
                 for user in users:
                     user["appName"] = app.get("name")
+                    user["appDescription"] = app.get("description")
                     user["appId"] = app.get("id")
+                    user["appPublishedBy"] = app.get("publishedBy")
+                    user["appLastUpdate"] = app.get("lastUpdate")
                 if writer is None:
                     writer = csv.DictWriter(file, fieldnames=users[0].keys(), extrasaction='ignore', quoting=csv.QUOTE_ALL, lineterminator='\n')
                     writer.writeheader()
