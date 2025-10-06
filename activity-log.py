@@ -1,10 +1,18 @@
 import datetime, requests, csv, os
+from enum import Enum
 from azure.identity import DefaultAzureCredential,AzureAuthorityHosts
 
+class ExportFilePartitionStrategy(Enum):
+    SingleFile = "single"
+    DailyFiles = "daily"
+    BatchFiles = "batch"
+
 input_result_folder = "c:/temp/activity_export"
+input_partition_strategy = ExportFilePartitionStrategy.SingleFile
 input_batch_minutes = 60 * 12
 input_log_start_date = datetime.date.today() - datetime.timedelta(days=5) # inclusive, e.g. datetime.date.fromisoformat("2025-01-01")
 input_log_end_date = datetime.date.today() - datetime.timedelta(days=1) # inclusive, e.g. datetime.date.fromisoformat("2025-01-07")
+
 
 if input_log_start_date > input_log_end_date:
     raise ValueError("Invalid date range: Start date after end date")
@@ -31,7 +39,8 @@ headers = {
             "Content-Type": "application/json"
             }
 
-result = []
+os.makedirs(input_result_folder, exist_ok=True)
+files = []
 
 print(f"Exporting activities from {start_date} to {end_date}. Step: {input_batch_minutes} minutes")
 
@@ -61,7 +70,33 @@ while True:
                 ct = activity_response_json.get('continuationToken')
 
         print(f'Exported {len(activities)} events. Date: {range_from}')
-        result.extend(activities)
+        
+        if len(activities) > 0:
+            fields = []
+            for event in activities:
+                for field in event.keys():
+                    if field not in fields:
+                        fields.append(field)
+
+            switch = {
+                ExportFilePartitionStrategy.SingleFile: f'activity.csv',
+                ExportFilePartitionStrategy.DailyFiles: f'activity-{range_from.year}{range_from.month:02}{range_from.day:02}.csv',
+                ExportFilePartitionStrategy.BatchFiles: f'activity-{range_from.year}{range_from.month:02}{range_from.day:02}{range_from.hour:02}{range_from.minute:02}.csv'
+            }
+
+            file_path = f'{input_result_folder}/{switch.get(input_partition_strategy)}'
+            new_file = False
+            if file_path not in files:
+                files.append(file_path)
+                new_file = True
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            with open(file_path, 'a', newline='', encoding="utf-8") as file:
+                writer = csv.DictWriter(file, fieldnames=fields, extrasaction='raise', quoting=csv.QUOTE_ALL, lineterminator='\n')
+                if new_file:
+                    writer.writeheader()
+                writer.writerows(activities)
+
     else:
         print(f'Error {activities_response.status_code} getting activities: {activities_response.text}')
         break
@@ -73,17 +108,4 @@ while True:
     else: 
         break
 
-if len(result) > 0:
-    print(f'Writing {len(result)} events to a file')
-    fields = []
-    for event in result:
-        for field in event.keys():
-            if field not in fields:
-                fields.append(field)
-    os.makedirs(input_result_folder, exist_ok=True)
-    with open(f'{input_result_folder}/activity.csv', 'w', newline='', encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=fields, extrasaction='raise', quoting=csv.QUOTE_ALL, lineterminator='\n')
-        writer.writeheader()
-        writer.writerows(result)
-else:
-    print(f'No events found')
+
