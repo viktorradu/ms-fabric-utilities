@@ -1,7 +1,7 @@
 from azure.identity import DefaultAzureCredential
 import os
 
-class PowerBIAuth:
+class Auth:
     def __init__(self, tenant_id=None, client_id=None, client_secret=None):
         self.token = None
         self.tenant_id = tenant_id
@@ -12,7 +12,7 @@ class PowerBIAuth:
             os.environ['AZURE_CLIENT_ID'] = client_id
             os.environ['AZURE_CLIENT_SECRET'] = client_secret
 
-    def get_access_token(self):
+    def get_access_token(self, scope):
         auth = DefaultAzureCredential(
             exclude_interactive_browser_credential=False,
             exclude_managed_identity_credential = True,
@@ -24,12 +24,12 @@ class PowerBIAuth:
             exclude_powershell_credential = True
         )
 
-        token_response = auth.get_token("https://analysis.windows.net/powerbi/api/.default")
+        token_response = auth.get_token(scope)
         return token_response.token
 
-    def get_api_auth_headers(self):
+    def get_api_auth_headers(self, scope):
         if self.token is None:
-            self.token = self.get_access_token()
+            self.token = self.get_access_token(scope)
         return {
                 "Authorization":"Bearer " + self.token,
                 "Content-Type": "application/json"

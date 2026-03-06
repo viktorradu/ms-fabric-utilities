@@ -1,12 +1,12 @@
-from lib.powerbiAuth import PowerBIAuth
+from lib.auth import Auth
 import requests, labconfig
 
-auth = PowerBIAuth(
+auth = Auth(
     tenant_id=labconfig.ta_tenantID,
     client_id=labconfig.ta_clientID,
     client_secret=labconfig.ta_clientSecret
 )
-headers = auth.get_api_auth_headers()
+headers = auth.get_api_auth_headers(scope="https://analysis.windows.net/powerbi/api/.default")
 
 request = {
     "capacityMigrationAssignments": [

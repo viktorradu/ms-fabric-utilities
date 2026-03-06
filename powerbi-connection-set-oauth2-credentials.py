@@ -1,14 +1,14 @@
-from lib.powerbiAuth import PowerBIAuth
+from lib.auth import Auth
 from lib.encryption import encrypt_with_public_key
 import requests, json
 
-auth = PowerBIAuth()
+auth = Auth()
 
 input_gateway_id = "your_gateway_id_here"  # Replace with your actual gateway ID
 input_datasource_id = "your_datasource_id_here"  # Replace with your actual datasource ID
 input_token = "your_oauth_token_here"  # Replace with your actual OAuth2 token
 
-gateway = requests.get(f"https://api.powerbi.com/v1.0/myorg/gateways/{input_gateway_id}", headers=auth.get_api_auth_headers())
+gateway = requests.get(f"https://api.powerbi.com/v1.0/myorg/gateways/{input_gateway_id}", headers=auth.get_api_auth_headers(scope="https://analysis.windows.net/powerbi/api/.default"))
 publicKeyDef = gateway.json().get("publicKey")
 
 creds = {

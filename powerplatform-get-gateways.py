@@ -1,8 +1,9 @@
-from lib.powerbiAuth import PowerBIAuth
+from lib.auth import Auth
 import requests, csv
 
-auth = PowerBIAuth()
-headers = auth.get_api_auth_headers()
+auth = Auth()
+pbi_scope = "https://analysis.windows.net/powerbi/api/.default"
+headers = auth.get_api_auth_headers(scope=pbi_scope)
 
 response = requests.get("https://api.powerbi.com/v2.0/myorg/gatewayClusters?$expand=memberGateways", headers=headers)
 gateways = response.json().get("value", [])

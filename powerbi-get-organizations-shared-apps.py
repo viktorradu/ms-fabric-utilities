@@ -1,14 +1,16 @@
-from lib.powerbiAuth import PowerBIAuth
+from lib.auth import Auth
 import requests, time, csv
 
-auth = PowerBIAuth()
+auth = Auth()
 
 batch_size = 1000
 skip = 0
 all_apps = []
 
+pbi_scope = "https://analysis.windows.net/powerbi/api/.default"
+
 while True:
-    apps_batch = requests.get(f"https://api.powerbi.com/v1.0/myorg/admin/apps?$top={batch_size}&$skip={skip}", headers=auth.get_api_auth_headers())
+    apps_batch = requests.get(f"https://api.powerbi.com/v1.0/myorg/admin/apps?$top={batch_size}&$skip={skip}", headers=auth.get_api_auth_headers(scope=pbi_scope))
     if apps_batch.status_code != 200:
         print("Error fetching apps:", apps_batch.text)
         break
@@ -25,7 +27,7 @@ with open(file, 'w', newline='', encoding="utf-8") as file:
     writer = None
     for app in all_apps:
         while True:
-            app_users = requests.get(f"https://api.powerbi.com/v1.0/myorg/admin/apps/{app.get('id')}/users", headers=auth.get_api_auth_headers())
+            app_users = requests.get(f"https://api.powerbi.com/v1.0/myorg/admin/apps/{app.get('id')}/users", headers=auth.get_api_auth_headers(scope=pbi_scope))
             if app_users.status_code == 200:
                 users = app_users.json().get("value", [])
                 for user in users:

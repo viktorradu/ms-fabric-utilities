@@ -3,22 +3,14 @@ from azure.identity import DefaultAzureCredential
 import labconfig
 import json
 from lib.encryption import encrypt_with_public_key
+from lib.auth import Auth
 
 
-auth = DefaultAzureCredential(
-    exclude_interactive_browser_credential=False,
-    exclude_managed_identity_credential = True,
-    exclude_environment_credential = True,
-    exclude_workload_identity_credential = True,
-    exclude_developer_cli_credential = True,
-    exclude_shared_token_cache_credential = True,
-    exclude_cli_credential = True,
-    exclude_powershell_credential = True
-)
+auth = Auth()
 
-token = auth.get_token("https://analysis.windows.net/powerbi/api/.default")
+token = auth.get_access_token("https://api.fabric.microsoft.com/.default")
 headers = {
-            "Authorization":"Bearer " + token.token,
+            "Authorization":"Bearer " + token,
             "Content-Type": "application/json"
             }
 
