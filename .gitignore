@@ -1,3 +1,5 @@
 __pycache__/
 labconfig.py
 lab.py
+*.txt
+*.csv

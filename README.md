@@ -20,16 +20,18 @@ Exports Power BI activity logs for a specified date range. The script authentica
 
 ### fabric-connection-create-serviceprincipal.py
 
-Creates a Microsoft Fabric connection using Service Principal authentication through an on-premises data gateway. The script:
+Creates a Microsoft Fabric SQL connection using service principal authentication through an on-premises data gateway. The script:
 - Retrieves the gateway's public key
 - Encrypts service principal credentials
 - Creates a SQL data source connection with service principal authentication
 
 **Configuration:** Requires `labconfig.py` with:
 - `gatewayId`: The ID of the gateway
-- `tenantId`: Azure AD tenant ID
+- `tenantId`: Microsoft Entra tenant ID used by the connection
 - `servicePrincipalId`: Service principal client ID
 - `servicePrincipalSecret`: Service principal secret
+- `sqlServer`: SQL Server host name
+- `sqlDatabase`: SQL database name
 
 ### fabric-dataflow-create.py
 
@@ -45,9 +47,33 @@ Creates a Fabric Gen2 Dataflow with a pre-configured query connecting to Databri
 - `databricksHttpPath`: Databricks HTTP path
 - `databricksConnectionId`: Connection ID for Databricks
 
+### graph-user-groups.py
+
+Exports the direct Microsoft Entra ID group memberships of one or more users to CSV.
+
+**Usage:**
+
+1. Create a `users.txt` file next to the script with one user principal name per line. Blank lines and lines beginning with `#` are ignored:
+
+   ```text
+   # Users to export
+   user1@contoso.com
+   user2@contoso.com
+   ```
+
+2. Authenticate either interactively with the default configuration or set `TENANT_ID`, `CLIENT_ID`, and `CLIENT_SECRET` in the script to use a service principal. The identity requires Microsoft Graph permissions to read users and group memberships.
+
+3. Run the script:
+
+   ```powershell
+   python graph-user-groups.py
+   ```
+
+**Output:** Creates `user-groups.csv` next to the script with the user's principal name and each group's ID, display name, email address, mail-enabled status, and security-enabled status.
+
 ### powerbi-assign-personal-workspace.py
 
-Assigns Power BI workspaces to specific capacity using the Admin API. The script:
+Assigns Power BI workspaces to a capacity using the Admin API. The script:
 - Authenticates using service principal credentials
 - Calls the capacity assignment API
 - Useful for bulk workspace migrations
@@ -56,6 +82,22 @@ Assigns Power BI workspaces to specific capacity using the Admin API. The script
 - `ta_tenantID`: Tenant ID
 - `ta_clientID`: Client ID for authentication
 - `ta_clientSecret`: Client secret
+- `workspacesToAssign`: Edit the list of workspace IDs in the request body
+- `targetCapacityObjectId`: Edit the target capacity ID in the request body
+
+### powerbi-connection-create-oauth2-credentials.py
+
+Creates a SQL data source on a Power BI gateway and configures it with OAuth2 credentials. The script:
+- Retrieves the gateway's public key
+- Creates the data source initially with anonymous credentials
+- Acquires an Azure SQL access token and encrypts it
+- Updates the new data source to use OAuth2 credentials
+
+**Configuration:**
+- `input_gateway_id`: Gateway ID
+- `input_datasource_name`: Name for the new data source
+- `input_server`: SQL Server host name
+- `input_database`: SQL database name
 
 ### powerbi-connection-set-oauth2-credentials.py
 
@@ -84,10 +126,11 @@ Sets Windows authentication credentials for a Power BI gateway data source. The 
 
 ### powerbi-desktop-parameter-edit.py
 
-Modifies Power BI Desktop project parameters in PBIP format. The script:
-- Creates a staging copy of the project
-- Updates parameter values in the model.bim file
-- Useful for automating parameter changes in CI/CD pipelines
+Modifies parameters in a Power BI Desktop project using the current TMDL-based PBIP format. The script:
+- Copies the report, semantic model, and PBIP file into a `stage` folder
+- Removes the copied semantic model's local `cache.abf`, when present
+- Updates parameter expressions in individual table TMDL files or `expressions.tmdl`
+- Opens the staged PBIP project in Power BI Desktop
 
 **Configuration:**
 - `parameters`: Dictionary of parameter names and their new values
@@ -122,13 +165,13 @@ python powerbi-project-rename-pages.py "C:\path\to\project.Report"
 
 ### powerbi-template-edit.py
 
-Modifies Power BI template (.pbit) files by unpacking, editing, and repacking them. The script:
-- Opens a .pbit file (which is a ZIP archive)
-- Allows modification of internal files
-- Creates a new template with the changes
+Modifies the `DataModelSchema` inside a Power BI template (`.pbit`) file. The script:
+- Opens `template.pbit` as a ZIP archive
+- Replaces `Source = SomeParameter` with `Source = SomeOtherParameter`
+- Writes the modified template to `template-edited.pbit`
 
 **Configuration:**
-- `file_in`: Input template file name
+- `file_in`: Input template file name; defaults to `template.pbit`
 
 ### powerplatform-get-gateways.py
 
@@ -138,7 +181,7 @@ Retrieves and exports all Power Platform gateways to a CSV file. The script:
 
 **Output:** Creates `gateways.csv` with detailed gateway information.
 
-## Library Files used by some scripts (lib/)
+## Library files used by some scripts (lib/)
 
 ### authenticatedencryption.py
 
@@ -150,8 +193,8 @@ Provides RSA-OAEP encryption functionality for encrypting credentials before sen
 
 ### LRO.py
 
-Handles Long-Running Operations (LRO) for Fabric API calls that are asynchronous.
+Polls the URL in the `Location` response header until a Fabric long-running operation completes or times out.
 
-### powerbiAuth.py
+### auth.py
 
-Provides authentication helpers for Power BI API calls, supporting both Azure Default Credential and Service Principal authentication.
+Provides access-token and authorization-header helpers for Microsoft Graph, Fabric, Power BI, and other Microsoft APIs. It supports interactive authentication by default and service principal authentication when tenant ID, client ID, and client secret values are supplied.
