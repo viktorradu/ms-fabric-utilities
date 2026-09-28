@@ -163,6 +163,36 @@ python powerbi-project-rename-pages.py "C:\path\to\project.Report"
 - Handles duplicate names by adding numeric suffixes
 - Removes invalid characters from page folder names
 
+### powerbi-user-scope-security-inventory.py
+
+Exports workspace access and semantic model access for workspaces assigned to a
+configured list of capacities. The script uses user-scope APIs and only
+includes workspaces and semantic models visible to the authenticated identity.
+
+**Usage:**
+
+1. Create a `capacities.txt` file next to the script with one capacity ID per
+   line. Blank lines and lines beginning with `#` are ignored.
+2. Configure `OUTPUT_FOLDER` in the script.
+3. Run `python powerbi-user-scope-security-inventory.py`.
+
+The authenticated identity must have access to the requested workspaces,
+semantic models, and their XMLA endpoints. Service principal authentication
+can be configured with `TENANT_ID`, `CLIENT_ID`, and `CLIENT_SECRET`; otherwise
+interactive authentication is used. Configure `ADOMD_CLIENT_DLL` to point to
+an installed Analysis Services ADOMD client library and install `pythonnet`.
+Interactive runs can show a separate ADOMD sign-in prompt when the first XMLA
+connection is opened. Service principal runs reuse the acquired Power BI token.
+XMLA connections target the tenant ID from the REST access token instead of the
+ambiguous `myorg` alias. Set `XMLA_TENANT` explicitly to override it, such as
+for a cross-tenant guest workspace.
+
+**Output:** Creates `workspace-access.csv` and
+`semantic-model-access.csv` in `OUTPUT_FOLDER`. Semantic model permissions are
+retrieved only for models whose item metadata indicates that RLS roles are
+required. The output includes each assigned RLS role, joined to user-list
+access rights using XMLA role-membership metadata.
+
 ### powerbi-template-edit.py
 
 Modifies the `DataModelSchema` inside a Power BI template (`.pbit`) file. The script:
