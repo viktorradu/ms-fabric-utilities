@@ -14,11 +14,18 @@ from lib.auth import Auth
 
 POWER_BI_API_URL = "https://api.powerbi.com/v1.0/myorg"
 POWER_BI_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
+GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
+GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 CAPACITIES_FILE = Path(__file__).with_name("capacities.txt")
 OUTPUT_FOLDER = Path("./output")
 REQUEST_TIMEOUT_SECONDS = 30
 WORKSPACE_PAGE_SIZE = 5000
 MAX_RETRIES = 5
+ROLE_MEMBER_TYPE_NAMES = {
+    "1": "Auto",
+    "2": "User",
+    "3": "Group",
+}
 ADOMD_CLIENT_DLL = Path(
     "C:/Program Files/Microsoft Power BI Desktop/bin/"
     "Microsoft.PowerBI.AdomdClient.dll"
@@ -123,6 +130,26 @@ def get_all_values(session, url, params=None):
         yield from page.get("value", [])
         url = page.get("@odata.nextLink")
         params = None
+
+
+def get_group_display_name(session, group_id, group_names_by_id):
+    cache_key = group_id.casefold()
+    if cache_key not in group_names_by_id:
+        encoded_group_id = quote(group_id, safe="")
+        group = get_json(
+            session,
+            f"{GRAPH_API_URL}/groups/{encoded_group_id}",
+            params={"$select": "displayName"},
+        )
+        display_name = group.get("displayName")
+        if not display_name:
+            raise ValueError(
+                f"Microsoft Graph returned no display name for group "
+                f"{group_id}"
+            )
+        group_names_by_id[cache_key] = display_name
+
+    return group_names_by_id[cache_key]
 
 
 def get_workspaces(session, capacity_ids):
@@ -307,7 +334,9 @@ def get_rls_role_memberships(
                 "modelPermission": str(role["ModelPermission"]),
                 "memberId": str(membership["MemberID"]),
                 "memberName": str(membership["MemberName"]),
-                "memberType": str(membership["MemberType"]),
+                "memberType": get_role_member_type_name(
+                    membership["MemberType"]
+                ),
                 "identityProvider": str(membership["IdentityProvider"]),
             }
         )
@@ -325,6 +354,19 @@ def principal_lookup_keys(principal):
         )
         if value
     }
+
+
+def get_role_member_type_name(member_type):
+    member_type_value = str(member_type)
+    if member_type_value in ROLE_MEMBER_TYPE_NAMES.values():
+        return member_type_value
+
+    try:
+        return ROLE_MEMBER_TYPE_NAMES[member_type_value]
+    except KeyError as error:
+        raise ValueError(
+            f"Unknown Analysis Services role member type: {member_type_value}"
+        ) from error
 
 
 def write_workspace_access(session, writer, capacity_id, workspace):
@@ -353,12 +395,14 @@ def write_workspace_access(session, writer, capacity_id, workspace):
 
 def write_semantic_model_access(
     session,
+    graph_session,
     writer,
     capacity_id,
     workspace,
     access_token,
     adomd_connection_type,
     xmla_tenant,
+    group_names_by_id,
 ):
     workspace_id = workspace["id"]
     semantic_models_url = (
@@ -425,6 +469,15 @@ def write_semantic_model_access(
             principal["identifier"] = (
                 principal["identifier"] or membership["memberName"]
             )
+            if (
+                not principal["displayName"]
+                and membership["memberType"] == "Group"
+            ):
+                principal["displayName"] = get_group_display_name(
+                    graph_session,
+                    membership["memberId"],
+                    group_names_by_id,
+                )
             principal["displayName"] = (
                 principal["displayName"] or membership["memberName"]
             )
@@ -483,6 +536,7 @@ def main():
 
     with (
         requests.Session() as session,
+        requests.Session() as graph_session,
         workspace_access_file.open(
             "w", newline="", encoding="utf-8-sig"
         ) as workspace_access_output,
@@ -493,6 +547,14 @@ def main():
         print("Authenticating with the Power BI API")
         session.headers.update(auth.get_api_auth_headers(POWER_BI_SCOPE))
         session.headers["Accept"] = "application/json"
+        print("Authenticating with Microsoft Graph")
+        graph_access_token = auth.get_access_token(GRAPH_SCOPE)
+        graph_session.headers.update(
+            {
+                "Authorization": f"Bearer {graph_access_token}",
+                "Accept": "application/json",
+            }
+        )
         print("Authentication completed")
         token_payload = decode_access_token_payload(auth.token)
         xmla_tenant = XMLA_TENANT or token_payload.get("tid")
@@ -536,6 +598,7 @@ def main():
         workspace_user_count = 0
         rls_semantic_model_count = 0
         role_assignment_count = 0
+        group_names_by_id = {}
         capacity_id_set = set(capacity_ids)
         print("Listing accessible workspaces")
 
@@ -565,12 +628,14 @@ def main():
                 current_role_assignment_count,
             ) = write_semantic_model_access(
                 session,
+                graph_session,
                 semantic_model_access_writer,
                 capacity_id,
                 workspace,
                 xmla_access_token,
                 adomd_connection_type,
                 xmla_tenant,
+                group_names_by_id,
             )
             rls_semantic_model_count += current_rls_semantic_model_count
             role_assignment_count += current_role_assignment_count
