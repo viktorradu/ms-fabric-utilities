@@ -1,13 +1,29 @@
 from lib.auth import Auth
 import requests, time, csv
+from pathlib import Path
 
-auth = Auth()
+OUTPUT_FOLDER = Path("./output")
+OUTPUT_FILE_NAME = "apps.csv"
 
 batch_size = 1000
 skip = 0
 all_apps = []
 
 pbi_scope = "https://analysis.windows.net/powerbi/api/.default"
+
+# Service principal authentication
+TENANT_ID = None
+CLIENT_ID = None
+CLIENT_SECRET = None
+
+if all([TENANT_ID, CLIENT_ID, CLIENT_SECRET]):
+    auth = Auth(
+        tenant_id=TENANT_ID,
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+    )
+else:
+    auth = Auth()
 
 while True:
     apps_batch = requests.get(f"https://api.powerbi.com/v1.0/myorg/admin/apps?$top={batch_size}&$skip={skip}", headers=auth.get_api_auth_headers(scope=pbi_scope))
@@ -22,8 +38,9 @@ while True:
     else:
         break
 
-file = "apps.csv"
-with open(file, 'w', newline='', encoding="utf-8") as file:
+OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
+output_file = OUTPUT_FOLDER / OUTPUT_FILE_NAME
+with output_file.open('w', newline='', encoding="utf-8") as file:
     writer = None
     for app in all_apps:
         while True:
@@ -50,3 +67,4 @@ with open(file, 'w', newline='', encoding="utf-8") as file:
                 break
 
 print(f"Finished fetching {len(all_apps)} apps and their users.")
+print(f"CSV file written to {output_file}")
