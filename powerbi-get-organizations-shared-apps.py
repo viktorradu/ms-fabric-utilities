@@ -48,6 +48,7 @@ with output_file.open('w', newline='', encoding="utf-8") as file:
             if app_users.status_code == 200:
                 users = app_users.json().get("value", [])
                 for user in users:
+                    user["workspaceId"] = app.get("workspaceId")
                     user["appName"] = app.get("name")
                     user["appDescription"] = app.get("description")
                     user["appId"] = app.get("id")
