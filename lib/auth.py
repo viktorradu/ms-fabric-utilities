@@ -12,8 +12,7 @@ class Auth:
             os.environ['AZURE_CLIENT_ID'] = client_id
             os.environ['AZURE_CLIENT_SECRET'] = client_secret
 
-    def get_access_token(self, scope):
-        auth = DefaultAzureCredential(
+        self.credential = DefaultAzureCredential(
             exclude_interactive_browser_credential=False,
             exclude_managed_identity_credential = True,
             exclude_environment_credential = self.tenant_id is None or self.client_id is None or self.client_secret is None,
@@ -24,12 +23,12 @@ class Auth:
             exclude_powershell_credential = True
         )
 
-        token_response = auth.get_token(scope)
+    def get_access_token(self, scope):
+        token_response = self.credential.get_token(scope)
         return token_response.token
 
     def get_api_auth_headers(self, scope):
-        if self.token is None:
-            self.token = self.get_access_token(scope)
+        self.token = self.get_access_token(scope)
         return {
                 "Authorization":"Bearer " + self.token,
                 "Content-Type": "application/json"

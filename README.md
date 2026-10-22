@@ -138,12 +138,41 @@ Modifies parameters in a Power BI Desktop project using the current TMDL-based P
 
 ### powerbi-get-organizations-shared-apps.py
 
-Exports all Power BI apps and their users from an organization. The script:
-- Retrieves all apps using the Admin API with pagination
-- For each app, gets the list of users with access
-- Exports data to a CSV file
+Exports Power BI apps, Fabric org apps, and Fabric org app audiences and their
+user access information from an organization. The script:
+- Retrieves Power BI apps using the Power BI Admin API with pagination
+- Retrieves `OrgApp` and `OrgAppAudience` items using the Fabric Admin API with pagination
+- Gets users, groups, and service principals with access to each item
+- Retries throttled requests using `Retry-After` and stops on API errors before replacing the CSV
 
-**Output:** Creates `apps.csv` with app details and user access information.
+**Output:** Creates `output/apps.csv` (configurable via `OUTPUT_FOLDER`) with
+the existing app and user columns plus `appType` (`App` or `OrgApp`),
+`additionalPermissions`, `audienceName`, and `audienceId`. Org app audience
+memberships roll into the parent app with `appType=OrgApp`; audiences are not
+separate app types. Each audience membership retains its own row and permissions,
+even when the same principal belongs to multiple audiences. Direct app access
+is retained separately with empty audience fields. Fabric permissions are
+semicolon-separated in `appUserAccessRight` and `additionalPermissions`.
+Audience rows use their parent app's metadata in `appId`, `appName`,
+`appDescription`, and `appLastUpdate`. Their own ID and name are exported in
+`audienceId` and `audienceName`. The parent is resolved using `parentAppId` in
+the audience's public definition, not by matching names or assuming a single
+app per workspace. Unresolved parents cause an error before replacing the CSV.
+Items with no access entries are included
+with empty user fields. Fabric `appPublishedBy` is left empty because the API
+does not return the publisher; `appLastUpdate` uses `lastUpdatedDate`.
+
+**Authentication:** Uses the existing `lib.auth.Auth` method: interactive
+authentication by default, or service principal authentication when `TENANT_ID`,
+`CLIENT_ID`, and `CLIENT_SECRET` are set. One `Auth` instance and its underlying
+credential are reused for both APIs, with separate scope-specific tokens managed
+and refreshed by Azure Identity. The caller must have permission to use both
+Admin APIs (Fabric administrator for interactive runs, or an authorized service
+principal with the relevant tenant settings enabled). Fabric delegated access
+requires `Tenant.Read.All` or `Tenant.ReadWrite.All`. Resolving audience parents
+also requires read/write permissions on each audience and, for delegated access,
+`Item.ReadWrite.All` for the audience `getDefinition` endpoint. The Fabric Admin APIs used
+here are preview APIs and are limited to 200 requests per hour.
 
 ### powerbi-project-rename-pages.py
 
@@ -228,3 +257,6 @@ Polls the URL in the `Location` response header until a Fabric long-running oper
 ### auth.py
 
 Provides access-token and authorization-header helpers for Microsoft Graph, Fabric, Power BI, and other Microsoft APIs. It supports interactive authentication by default and service principal authentication when tenant ID, client ID, and client secret values are supplied.
+Each `Auth` instance reuses one `DefaultAzureCredential`. Azure Identity manages
+token caching and refresh for each requested scope, so an instance can safely be
+shared across APIs without reusing a token intended for a different resource.
