@@ -59,6 +59,18 @@ blank; credential secrets are not returned by the API or exported. An empty
 inventory produces a header-only CSV. All pages are fetched before opening the
 output file, so API errors leave an existing export unchanged.
 
+Owners are retrieved separately using the paginated
+[Admin List Connection Role Assignments API](https://learn.microsoft.com/en-us/rest/api/fabric/admin/connections/list-connection-role-assignments)
+for each connection. `ownerIds`, `ownerTypes`, `ownerDisplayNames`, and
+`ownerUserPrincipalNames` contain semicolon-separated values in matching order,
+preserving one row per connection. Only effective `Owner` assignments are
+included, not `PendingOwner`. Names and user principal names are blank when not
+returned by the API; groups and service principals have no user principal name.
+Connections without owners have blank owner columns. `myRole` is the caller's
+role, not the connection owner. Owner lookups use the same authentication and
+retry handling; a failed lookup stops the export without replacing an existing
+CSV.
+
 ### fabric-dataflow-create.py
 
 Creates a Fabric Gen2 Dataflow with a pre-configured query connecting to Databricks. The script:

@@ -37,6 +37,10 @@ CSV_FIELDS = [
     "connectionRecency.lastCredentialUsedDateTime",
     "connectionRecency.myLastBoundDateTime",
     "connectionRecency.myLastCredentialUsedDateTime",
+    "ownerIds",
+    "ownerTypes",
+    "ownerDisplayNames",
+    "ownerUserPrincipalNames",
 ]
 
 
@@ -56,10 +60,10 @@ def create_auth():
     return Auth()
 
 
-def get_connections_page(auth, session, params):
+def get_json(auth, session, url, params):
     for attempt in range(MAX_RETRIES + 1):
         response = session.get(
-            CONNECTIONS_URL,
+            url,
             headers=auth.get_api_auth_headers(FABRIC_SCOPE),
             params=params,
             timeout=REQUEST_TIMEOUT_SECONDS,
@@ -75,18 +79,41 @@ def get_connections_page(auth, session, params):
         print(f"Rate limit encountered. Retrying after {retry_after} seconds.")
         time.sleep(retry_after)
 
-    raise RuntimeError(f"Failed to get a response from {CONNECTIONS_URL}")
+    raise RuntimeError(f"Failed to get a response from {url}")
 
 
-def get_connections(auth, session):
+def get_all_values(auth, session, url):
     params = {}
     while True:
-        page = get_connections_page(auth, session, params)
+        page = get_json(auth, session, url, params)
         yield from page["value"]
         continuation_token = page.get("continuationToken")
         if not continuation_token:
             break
         params = {"continuationToken": continuation_token}
+
+
+def get_connections(auth, session):
+    return get_all_values(auth, session, CONNECTIONS_URL)
+
+
+def get_connection_owners(auth, session, connection_id):
+    owners = [
+        assignment["principal"]
+        for assignment in get_all_values(
+            auth, session, f"{CONNECTIONS_URL}/{connection_id}/roleAssignments"
+        )
+        if assignment["role"] == "Owner"
+    ]
+    return {
+        "ownerIds": ";".join(owner["id"] for owner in owners),
+        "ownerTypes": ";".join(owner["type"] for owner in owners),
+        "ownerDisplayNames": ";".join(owner.get("displayName") or "" for owner in owners),
+        "ownerUserPrincipalNames": ";".join(
+            (owner.get("userDetails") or {}).get("userPrincipalName") or ""
+            for owner in owners
+        ),
+    }
 
 
 def flatten_connection(connection):
@@ -103,10 +130,11 @@ def flatten_connection(connection):
 def main():
     auth = create_auth()
     with requests.Session() as session:
-        rows = [
-            flatten_connection(connection)
-            for connection in get_connections(auth, session)
-        ]
+        rows = []
+        for connection in get_connections(auth, session):
+            row = flatten_connection(connection)
+            row.update(get_connection_owners(auth, session, connection["id"]))
+            rows.append(row)
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT_FILE.open("w", newline="", encoding="utf-8-sig") as output:

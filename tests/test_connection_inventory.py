@@ -131,6 +131,59 @@ class ConnectionInventoryTests(unittest.TestCase):
             "",
         )
 
+    def test_owner_lookup_paginates_and_excludes_nonowners(self):
+        session = Mock()
+        session.get.side_effect = [
+            response({
+                "value": [
+                    {"role": "Owner", "principal": {
+                        "id": "user", "type": "User", "displayName": "User One",
+                        "userDetails": {"userPrincipalName": "user@contoso.com"},
+                    }},
+                    {"role": "User", "principal": {"id": "reader", "type": "User"}},
+                    {"role": "PendingOwner", "principal": {
+                        "id": "pending", "type": "User",
+                    }},
+                ],
+                "continuationToken": "next",
+            }),
+            response({"value": [
+                {"role": "Owner", "principal": {
+                    "id": "group", "type": "Group", "displayName": "Owners",
+                }},
+                {"role": "Owner", "principal": {
+                    "id": "app", "type": "ServicePrincipal",
+                }},
+            ]}),
+        ]
+        owners = inventory.get_connection_owners(Mock(), session, "connection")
+        self.assertEqual(owners, {
+            "ownerIds": "user;group;app",
+            "ownerTypes": "User;Group;ServicePrincipal",
+            "ownerDisplayNames": "User One;Owners;",
+            "ownerUserPrincipalNames": "user@contoso.com;;",
+        })
+        for call in session.get.call_args_list:
+            self.assertEqual(
+                call.args,
+                (f"{inventory.CONNECTIONS_URL}/connection/roleAssignments",),
+            )
+        self.assertEqual(
+            session.get.call_args_list[1].kwargs["params"],
+            {"continuationToken": "next"},
+        )
+
+    def test_connections_without_owners_have_blank_owner_columns(self):
+        session = Mock()
+        session.get.return_value = response({"value": [
+            {"role": "PendingOwner", "principal": {"id": "pending", "type": "User"}},
+        ]})
+        owners = inventory.get_connection_owners(Mock(), session, "connection")
+        self.assertEqual(owners, {
+            "ownerIds": "", "ownerTypes": "",
+            "ownerDisplayNames": "", "ownerUserPrincipalNames": "",
+        })
+
     def test_csv_export_and_empty_inventory(self):
         for connections in ([{"id": "one", "displayName": "Sales, Europe\nTeam"}], []):
             with (
@@ -139,6 +192,11 @@ class ConnectionInventoryTests(unittest.TestCase):
                 patch.object(inventory, "OUTPUT_FILE", Path(directory) / "output" / "connections.csv"),
                 patch.object(inventory, "create_auth"),
                 patch.object(inventory, "get_connections", return_value=iter(connections)),
+                patch.object(inventory, "get_connection_owners", return_value={
+                    "ownerIds": "owner", "ownerTypes": "User",
+                    "ownerDisplayNames": "Owner, One",
+                    "ownerUserPrincipalNames": "owner@contoso.com",
+                }) as get_owners,
             ):
                 inventory.main()
                 with inventory.OUTPUT_FILE.open(newline="", encoding="utf-8-sig") as output:
@@ -148,6 +206,13 @@ class ConnectionInventoryTests(unittest.TestCase):
                 self.assertEqual(len(rows), len(connections))
                 if connections:
                     self.assertEqual(rows[0]["displayName"], connections[0]["displayName"])
+                    self.assertEqual(rows[0]["ownerIds"], "owner")
+                    self.assertEqual(rows[0]["ownerDisplayNames"], "Owner, One")
+                    self.assertEqual(rows[0]["ownerUserPrincipalNames"], "owner@contoso.com")
+                    get_owners.assert_called_once()
+                    self.assertEqual(get_owners.call_args.args[2], "one")
+                else:
+                    get_owners.assert_not_called()
 
     def test_failed_later_page_does_not_replace_existing_csv(self):
         with (
@@ -160,12 +225,36 @@ class ConnectionInventoryTests(unittest.TestCase):
             session = session_type.return_value.__enter__.return_value
             session.get.side_effect = [
                 response({"value": [{"id": "one"}], "continuationToken": "next"}),
+                response({"value": []}),
                 response({}, status=403),
             ]
             with self.assertRaises(requests.HTTPError):
                 inventory.main()
             self.assertEqual(
                 inventory.OUTPUT_FILE.read_text(encoding="utf-8"), "existing inventory"
+            )
+
+    def test_owner_lookup_failure_does_not_replace_existing_csv(self):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(inventory, "OUTPUT_FILE", Path(directory) / "connections.csv"),
+            patch.object(inventory, "create_auth"),
+            patch.object(inventory.requests, "Session") as session_type,
+        ):
+            inventory.OUTPUT_FILE.write_text("existing inventory", encoding="utf-8")
+            session = session_type.return_value.__enter__.return_value
+            session.get.side_effect = [
+                response({"value": [{"id": "one"}]}),
+                response({}, status=403),
+            ]
+            with self.assertRaises(requests.HTTPError):
+                inventory.main()
+            self.assertEqual(
+                inventory.OUTPUT_FILE.read_text(encoding="utf-8"), "existing inventory"
+            )
+            self.assertEqual(
+                session.get.call_args.args,
+                (f"{inventory.CONNECTIONS_URL}/one/roleAssignments",),
             )
 
 
