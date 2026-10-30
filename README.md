@@ -33,6 +33,32 @@ Creates a Microsoft Fabric SQL connection using service principal authentication
 - `sqlServer`: SQL Server host name
 - `sqlDatabase`: SQL database name
 
+### fabric-connection-inventory.py
+
+Exports tenant-wide connections using the preview
+[Fabric Admin List Connections API](https://learn.microsoft.com/en-us/rest/api/fabric/admin/connections/list-connections).
+Follows continuation tokens to retrieve every page and retries throttled requests
+using `Retry-After`.
+
+**Configuration:** Set `TENANT_ID`, `CLIENT_ID`, and `CLIENT_SECRET` at the
+start of the script for service principal authentication, or leave all three as
+`None` for interactive authentication through `lib.auth.Auth`. Do not commit
+populated secrets. Interactive callers must be Fabric administrators with
+`Tenant.Read.All` or `Tenant.ReadWrite.All` delegated scope. Service principals
+must be authorized to use Fabric read-only Admin APIs in the tenant settings.
+Requires the `requests` and `azure-identity` Python packages.
+
+**Usage:** Run `python fabric-connection-inventory.py`.
+
+**Output:** Creates `output/connections.csv`, configurable via `OUTPUT_FILE`.
+Each connection has one row with its ID, display name, gateway, connectivity
+type, privacy level, caller role, cloud usage flags, connection type/path,
+credential metadata, and creation/usage timestamps. Nested fields use dotted
+column names, such as `connectionDetails.path`. Missing optional fields are
+blank; credential secrets are not returned by the API or exported. An empty
+inventory produces a header-only CSV. All pages are fetched before opening the
+output file, so API errors leave an existing export unchanged.
+
 ### fabric-dataflow-create.py
 
 Creates a Fabric Gen2 Dataflow with a pre-configured query connecting to Databricks. The script:
